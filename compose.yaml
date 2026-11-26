@@ -44,6 +44,12 @@ services:
     # Aucun port publie : seul l'API le contacte, sur le reseau "backend".
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
 
   db:
