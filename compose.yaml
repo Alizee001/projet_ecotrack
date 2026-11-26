@@ -1,0 +1,87 @@
+name: ecotrack
+
+services:
+  frontend:
+    build: ./frontend
+    image: ecotrack-frontend:1.0
+    ports:
+      - "3000:3000"           # page web, ouverte par le navigateur de l'hote
+    networks:
+      - public
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    image: ecotrack-api:1.0
+    ports:
+      - "5000:5000"           # appele par le JavaScript React depuis le navigateur
+    environment:
+      POSTGRES_HOST: db       # nom de service = nom DNS sur le reseau "data"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: appdb
+      POSTGRES_USER: etudiant
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      WORKER_URL: http://worker:8000
+    secrets:
+      - db_password
+    networks:
+      - public
+      - backend
+      - data
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./worker
+    image: ecotrack-worker:1.0
+    # Aucun port publie : seul l'API le contacte, sur le reseau "backend".
+    networks:
+      - backend
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    # Aucun port publie : 5432 reste interne au reseau "data".
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: etudiant
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etudiant -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  # Reseau expose : ports publies vers l'hote (frontend et API).
+  public:
+  # API <-> worker. internal : pas d'acces a Internet ni depuis l'hote.
+  backend:
+    internal: true
+  # API <-> PostgreSQL. Le worker n'y a pas acces, et la base ne voit pas le worker.
+  data:
+    internal: true
+
+volumes:
+  # Donnees PostgreSQL conservees apres "docker compose down".
+  db-data:
+
+secrets:
+  # Fichier cree localement (jamais versionne, voir .gitignore et README).
+  db_password:
+    file: ./db_password.txt

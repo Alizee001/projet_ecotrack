@@ -15,6 +15,12 @@ Le JavaScript React s’exécute dans le navigateur. Le conteneur frontend sert 
 
 ## Votre mission
 
+Alizée CHAMBON
+
+Audrey JULIEN
+
+Groupe : B2
+
 ### 1. Identifier les services
 
 | Dossier ou service | Technologie | Commande de lancement | Port |
