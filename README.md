@@ -60,9 +60,57 @@ Le chemin Python doit contenir .venv. Ouvrir http://localhost:8000/health : rés
 
 ### 3. Créer les images
 
+Chaque services à son propre `dockerfile` (dans `frontend/`, `api/` et `worker/`) et un `.dockerignore` pour inclure les dépendances locals et garder les images légères.
+
+* `frontend` (`./frontend/dockerfile`) : installe les dépendances `Node.js`, exécute npm run build pour compiler l'application React, puis lance le serveur sur le port `3000` (`npm start`).
+* `api` (`./api/dockerfile`) : installe les dépendances Node.js Express et démarre le serveur sur le port `5000` (`npm start`).
+* `worker` (`./worker/dockerfile`) : installe les dépendances Python depuis `requirements.txt` et lance l'API Flask sur le port `8000` (`python app.py`).
+* `db` : utilise directement l'image officielle `postgres:15-alpine` sans dockerfile personnalisé.
+
+Toutes les images sont construites automatiquement au lancement grâce à la commande :
+```bash
+docker compose up -d --build
+```
+
+Et elles sont arrêté grâce à la commande : 
+```bash
+docker compose down -v
+```
+
 ### 4. Configurer Compose
 
+Le fichier `compose.yaml` organise l'ensemble de la file (`frontend`, `api`, `worker` et `db`)
+
+* Ports exposés vers l'hôte :
+
+    - `frontend` : `3000:3000` (accès à l'interface React depuis le navigateur).
+    - `api` : `5000:5000` (appels depuis le navigateur / tests API).
+    - `worker` et `db` : aucun port publié sur l'hôte, afin de restreindre leur accès aux réseaux internes.
+
+* Segmentation réseau :
+    - `public` : relie `frontend` et `api` pour l'exposition vers l'extérieur.
+    - `backend` (internal: true) : relie `api` et `worker` pour les calculs (`POST /analyze`) sans accès direct depuis l'hôte.
+    - `data` (internal: true) : relie `api` et `db` (`POSTGRES_HOST=db`, port `5432`), isolant PostgreSQL du `worker` et du `frontend`.   
+    
+* Dépendances et santé (healthcheck / depends_on) :
+    - `db` vérifie sa disponibilité avec `pg_isready -U etudiant -d appdb`.
+    - `worker` vérifie son endpoint `/health` sur le port `8000`.
+    - `api` attend que db et worker soient `service_healthy`, et `frontend` attend `api`.
+    
+* Persistance des données : le volume `db-data` est monté sur `/var/lib/postgresql/data` dans `db` afin de conserver l'historique des analyses après un arrêt de la pile.
+
 ### 5. Ajouter le secret
+
+Le mot de passe secret n'est pas écrit en claire dans `compose.yaml` et est placé dans `.gitignore`
+
+* Le secret `db_password` est déclaré dans `compose.yaml` à partir du fichier local `./db_password.txt` (qui est ignoré via `.gitignore`) et monté dans `db` et `api` sous `/run/secrets/db_password`.
+* Les services `db` et `api` utilisent `POSTGRES_PASSWORD_FILE=/run/secrets/db_password` pour lire le mot de passe au démarrage.
+
+Recréer le secret après clonage du dépôt :
+
+1. Créer un fichier à la racine nommé : `db_password.txt`
+2. Écrivez votre mot de pass dedans en un seul mot, sans espace inutiles.
+3. Vous pouvez maintenant lancer votre `docker compose up -d --build`
 
 ### 6. Lancer et vérifier
 
